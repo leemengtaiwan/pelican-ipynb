@@ -81,6 +81,38 @@ def get_html_from_filepath(filepath):
         for i in soup.findAll('div', {'class': 'input'}):
             if i.findChildren()[1].find(text='#ignore') is not None:
                 i.extract()
+
+            # transform code block to block-quote for pretty rendering
+            if i.findChildren()[1].find(text='#blockquote') is not None:
+                pre = i.find('pre')
+                parent_div = pre.parent # div to replace code with blockquote
+
+                # get raw text after block-quote keyword
+                raw_text = ''
+                for e in pre.contents[2:]:
+                    try:
+                        raw_text += e.text
+                    except AttributeError:
+                        if e.replace('　', ' ').replace(' ', ' ') == ' ':
+                            raw_text += e
+                # delete <pre> tag from parent div
+                pre.extract()
+
+                # insert <blockquote> tag into parent div
+                p = soup.new_tag('p')
+                p.append(raw_text)
+                block_quote = soup.new_tag('blockquote')
+                block_quote.append(p)
+                parent_div.append(block_quote)
+
+        # add classes for tables to apply bootstrap style
+        for t in soup.findAll('table', {'class': 'dataframe'}):
+            t['class'] = t['class'] + ['table', 'table-striped', 'table-responsive']
+
+        # remove input and output prompt
+        for prompt in soup.findAll('div', {'class': 'prompt'}):
+            prompt.extract()
+
         content = soup.decode(formatter="minimal")
 
     return content, info
