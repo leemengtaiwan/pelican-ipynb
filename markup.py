@@ -64,7 +64,7 @@ class IPythonNB(BaseReader):
             # Change to standard pelican metadata
             for key, value in notebook_metadata.items():
                 key = key.lower()
-                if key in ("title", "date", "category", "tags", "slug", "author"):
+                if key in ("title", "date", "category", "tags", "slug", "author", 'image', 'image_credit_url'):
                     metadata[key] = self.process_metadata(key, value)
 
         keys = [k.lower() for k in metadata.keys()]
@@ -120,7 +120,10 @@ class MyHTMLParser(HTMLReader._HTMLParser):
         self.wordcount = 0
         self.summary = None
 
-        self.stop_tags = [('div', ('class', 'input')), ('div', ('class', 'output')), ('h2', ('id', 'Header-2'))]
+        self.stop_tags = [('div', ('class', 'input')), ('div', ('class', 'output'))]
+        for i in range(1, 7):
+            self.stop_tags.append(('h{}'.format(i), None))
+
         if 'IPYNB_STOP_SUMMARY_TAGS' in self.settings.keys():
             self.stop_tags = self.settings['IPYNB_STOP_SUMMARY_TAGS']
         if 'IPYNB_EXTEND_STOP_SUMMARY_TAGS' in self.settings.keys():
