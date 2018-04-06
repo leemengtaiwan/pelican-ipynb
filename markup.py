@@ -64,7 +64,7 @@ class IPythonNB(BaseReader):
             # Change to standard pelican metadata
             for key, value in notebook_metadata.items():
                 key = key.lower()
-                if key in ("title", "date", "category", "tags", "slug", "author", 'image', 'image_credit_url'):
+                if key in ("title", "date", "category", "tags", "slug", "author", 'image', 'image_credit_url', 'description'):
                     metadata[key] = self.process_metadata(key, value)
 
         keys = [k.lower() for k in metadata.keys()]
