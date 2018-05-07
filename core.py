@@ -83,7 +83,7 @@ def get_html_from_filepath(filepath):
                 i.extract()
 
             # transform code block to block-quote for pretty rendering
-            if i.findChildren()[1].find(text='#blockquote') is not None:
+            elif i.findChildren()[1].find(text='#blockquote') is not None:
                 pre = i.find('pre')
                 parent_div = pre.parent # div to replace code with blockquote
 
@@ -106,8 +106,9 @@ def get_html_from_filepath(filepath):
                 parent_div.append(block_quote)
 
         # add classes for tables to apply bootstrap style
-        for t in soup.findAll('table', {'class': 'dataframe'}):
-            t['class'] = t['class'] + ['table', 'table-striped', 'table-responsive']
+        # for t in soup.findAll('table', {'class': 'dataframe'}):
+        for t in soup.findAll('table'):
+            t['class'] = t.get('class', []) + ['table', 'table-striped', 'table-responsive']
 
         # remove input and output prompt
         for prompt in soup.findAll('div', {'class': 'prompt'}):
@@ -139,7 +140,8 @@ def fix_css(content, info, ignore_css=False):
         return '<style type=\"text/css\">{0}</style>'.format(style_text)
 
     if ignore_css:
-        content = content + LATEX_CUSTOM_SCRIPT
+        # content = content + LATEX_CUSTOM_SCRIPT
+        content = content
     else:
         ipython_css = '\n'.join(filter_css(css_style) for css_style in info['inlining']['css'])
         content = ipython_css + content + LATEX_CUSTOM_SCRIPT
