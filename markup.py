@@ -1,8 +1,11 @@
 from __future__ import absolute_import, print_function, unicode_literals
 
+import ast
 import os
 import json
+import re
 import six
+import tempfile
 
 try:
     # Py3k
@@ -44,28 +47,46 @@ class IPythonNB(BaseReader):
     def read(self, filepath):
         metadata = {}
         metadata['ipython'] = True
+        start = 0
+        end = None
 
         # Files
         filedir = os.path.dirname(filepath)
         filename = os.path.basename(filepath)
-        metadata_filename = filename.split('.')[0] + '.ipynb-meta'
+        metadata_filename = os.path.splitext(filename)[0] + '.ipynb-meta'
         metadata_filepath = os.path.join(filedir, metadata_filename)
 
+        # When metadata is in a external file, process using Pelican MD Reader
+        md_reader = MarkdownReader(self.settings)
+
         if os.path.exists(metadata_filepath):
-            # Metadata is on a external file,
-            # process using Pelican MD Reader
-            md_reader = MarkdownReader(self.settings)
             _content, metadata = md_reader.read(metadata_filepath)
         else:
             # Load metadata from ipython notebook file
-            ipynb_file = open(filepath)
-            notebook_metadata = json.load(ipynb_file)['metadata']
 
-            # Change to standard pelican metadata
-            for key, value in notebook_metadata.items():
-                key = key.lower()
-                if key in ("title", "date", "category", "tags", "slug", "author", 'image', 'image_credit_url', 'description'):
-                    metadata[key] = self.process_metadata(key, value)
+            with open(filepath) as ipynb_file:
+                doc = json.load(ipynb_file)
+            if self.settings.get('IPYNB_USE_METACELL'):
+                metacell = "\n".join(doc['cells'][0]['source'])
+                # Convert Markdown title and listings to standard metadata items
+                metacell = re.sub(r'^#+\s+', 'title: ', metacell, flags=re.MULTILINE)
+                metacell = re.sub(r'^\s*[*+-]\s+', '', metacell, flags=re.MULTILINE)
+                # Unfortunately we can not pass MarkdownReader an in-memory
+                # string, so we have to work with a temporary file
+                with tempfile.NamedTemporaryFile('w+', encoding='utf-8') as metadata_file:
+                    metadata_file.write(metacell)
+                    metadata_file.flush()
+                    _content, metadata = md_reader.read(metadata_file.name)
+                # Skip metacell
+                start = 1
+            else:
+                notebook_metadata = doc['metadata']
+                # Change to standard pelican metadata
+                for key, value in notebook_metadata.items():
+                    key = key.lower()
+                    if key in ("title", "date", "category", "tags", "slug", "author", 'image',
+                               'image_credit_url', 'description'):
+                        metadata[key] = self.process_metadata(key, value)
 
         keys = [k.lower() for k in metadata.keys()]
         if not set(['title', 'date']).issubset(set(keys)):
@@ -78,10 +99,17 @@ class IPythonNB(BaseReader):
                 raise Exception("Could not find metadata in `.ipynb-meta` or inside `.ipynb` but found `.md` file, "
                       "assuming that this notebook is for liquid tag usage if true ignore this error")
 
-        content, info = get_html_from_filepath(filepath)
+        if 'subcells' in metadata:
+            start, end = ast.literal_eval(metadata['subcells'])
+
+        content, info = get_html_from_filepath(filepath,
+                                               preprocessors=self.settings.get('IPYNB_PREPROCESSORS', []),
+                                               start=start, end=end,
+                                               template=self.settings.get('IPYNB_EXPORT_TEMPLATE')
+                                               )
 
         # Generate Summary: Do it before cleaning CSS
-        if 'summary' not in [key.lower() for key in self.settings.keys()]:
+        if 'summary' not in keys:
             parser = MyHTMLParser(self.settings, filename)
             if isinstance(content, six.binary_type): # PY2 (str) or PY3 (bytes) to PY2 (unicode) or PY3 (str)
                 # unicode_literals makes format() try to decode as ASCII. Enforce decoding as UTF-8.
