@@ -18,7 +18,7 @@ except ImportError:
 from pelican import signals
 from pelican.readers import MarkdownReader, HTMLReader, BaseReader
 
-from .ipynb import get_html_from_filepath, fix_css
+from .ipynb import get_html_from_filepath, parse_css
 
 
 def register():
@@ -54,20 +54,20 @@ class IPythonNB(BaseReader):
         # Files
         filedir = os.path.dirname(filepath)
         filename = os.path.basename(filepath)
-        metadata_filename = os.path.splitext(filename)[0] + '.ipynb-meta'
+        metadata_filename = os.path.splitext(filename)[0] + '.nbdata'
         metadata_filepath = os.path.join(filedir, metadata_filename)
 
-        # When metadata is in a external file, process using Pelican MD Reader
         md_reader = MarkdownReader(self.settings)
-
         if os.path.exists(metadata_filepath):
+            # When metadata is in an external file, process the MD file using Pelican MD Reader
+            md_reader = MarkdownReader(self.settings)
             _content, metadata = md_reader.read(metadata_filepath)
         else:
-            # Load metadata from ipython notebook file
-
+            # No external .md file: Load metadata from ipython notebook file
             with open(filepath) as ipynb_file:
                 doc = json.load(ipynb_file)
             if self.settings.get('IPYNB_USE_METACELL'):
+                # Option 2: Use metadata on the first notebook cell
                 metacell = "\n".join(doc['cells'][0]['source'])
                 # Convert Markdown title and listings to standard metadata items
                 metacell = re.sub(r'^#+\s+', 'title: ', metacell, flags=re.MULTILINE)
@@ -81,6 +81,7 @@ class IPythonNB(BaseReader):
                 # Skip metacell
                 start = 1
             else:
+                # Option 3: Read metadata from inside the notebook
                 notebook_metadata = doc['metadata']
                 # Change to standard pelican metadata
                 for key, value in notebook_metadata.items():
@@ -95,24 +96,27 @@ class IPythonNB(BaseReader):
             md_filename = filename.split('.')[0] + '.md'
             md_filepath = os.path.join(filedir, md_filename)
             if not os.path.exists(md_filepath):
-                raise Exception("Could not find metadata in `.ipynb-meta`, inside `.ipynb` or external `.md` file.")
+                raise Exception("Could not find metadata in `.nbdata` file or inside `.ipynb`")
             else:
-                raise Exception("Could not find metadata in `.ipynb-meta` or inside `.ipynb` but found `.md` file, "
+                raise Exception("Could not find metadata in `.nbdata` file or inside `.ipynb` but found `.md` file, "
                       "assuming that this notebook is for liquid tag usage if true ignore this error")
 
         if 'subcells' in metadata:
             start, end = ast.literal_eval(metadata['subcells'])
 
+        preprocessors = self.settings.get('IPYNB_PREPROCESSORS', [])
+        template = self.settings.get('IPYNB_EXPORT_TEMPLATE', None)
         content, info = get_html_from_filepath(filepath,
-                                               preprocessors=self.settings.get('IPYNB_PREPROCESSORS', []),
                                                start=start, end=end,
-                                               template=self.settings.get('IPYNB_EXPORT_TEMPLATE')
-                                               )
+                                               preprocessors=preprocessors,
+                                               template=template,
+                                            )
 
-        # Generate Summary: Do it before cleaning CSS
-        if 'summary' not in keys:
+        # Generate summary: Do it before cleaning CSS
+        use_meta_summary = self.settings.get('IPYNB_GENERATE_SUMMARY', True)
+        if 'summary' not in keys and use_meta_summary:
             parser = MyHTMLParser(self.settings, filename)
-            if isinstance(content, six.binary_type): # PY2 (str) or PY3 (bytes) to PY2 (unicode) or PY3 (str)
+            if isinstance(content, six.binary_type):
                 # unicode_literals makes format() try to decode as ASCII. Enforce decoding as UTF-8.
                 content = '<body>{0}</body>'.format(content.decode("utf-8"))
             else:
@@ -120,14 +124,13 @@ class IPythonNB(BaseReader):
                 content = '<body>{0}</body>'.format(content)
             parser.feed(content)
             parser.close()
-            content = parser.body
+            # content = parser.body
+            metadata['summary'] = parser.summary
 
-            use_meta_summary = self.settings.get('IPYNB_USE_META_SUMMARY', False)
-            if use_meta_summary:
-                metadata['summary'] = parser.summary
-
-        ignore_css = True if self.settings.get('IPYNB_IGNORE_CSS', False) else False
-        content = fix_css(content, info, ignore_css=ignore_css)
+        # Write/fix content
+        fix_css = self.settings.get('IPYNB_FIX_CSS', True)
+        ignore_css = self.settings.get('IPYNB_SKIP_CSS', False)
+        content = parse_css(content, info, fix_css=fix_css, ignore_css=ignore_css)
         if self.settings.get('IPYNB_NB_SAVE_AS'):
             output_path = self.settings.get('OUTPUT_PATH')
             nb_output_fullpath = self.settings.get('IPYNB_NB_SAVE_AS').format(**metadata)
