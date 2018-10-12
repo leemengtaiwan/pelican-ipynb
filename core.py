@@ -151,14 +151,131 @@ def get_html_from_filepath(filepath, start=0, end=None, preprocessors=[], templa
                 block_quote.append(p)
                 parent_div.append(block_quote)
 
+        # remove input and output prompt
+        for prompt in soup.findAll('div', {'class': 'prompt'}):
+            prompt.extract()
+
         # add classes for tables to apply bootstrap style
         # for t in soup.findAll('table', {'class': 'dataframe'}):
         for t in soup.findAll('table'):
             t['class'] = t.get('class', []) + ['table', 'table-striped', 'table-responsive']
 
-        # remove input and output prompt
-        for prompt in soup.findAll('div', {'class': 'prompt'}):
-            prompt.extract()
+        # generate html for templated markdown cells
+        for i in soup.findAll('div', {'class': 'text_cell_render'}):
+            texts = i.findChildren()
+            template_settings = {
+                '!article': ['article_title', 'article_link', 'image_filename'],
+                '!quote': ['quote_text', 'author_into'],
+                '!mp4': ['mp4_file', 'image_file', 'description'],
+                '!image': ['image_file', 'description', 'source_link', 'source_name'],
+            }
+            # get settings for template keywords
+            values = []
+            if texts and texts[0].text in template_settings:
+                keyword = texts[0].text
+                values = [e.text for e in i.findAll('li')]
+
+            if not values:
+                continue
+            html_str = ''
+            # article covers for digest
+            if keyword == '!article':
+                title, link, image_filename = values
+                anchor_link = title.replace(' ', ' ').replace('　', ' ').replace(' ', '-')
+                html_str = """
+                <h3 id="{anchor_link}">
+                    <a href="{link}">{title}</a><a class="anchor-link" href="#{anchor_link}">¶</a>
+                </h3>
+                <center>
+                    <a href="{link}" target="_blank">
+                        <img src="/images/digests/{image_filename}">
+                    </a>
+                    <br>
+                </center>
+                """.format(anchor_link=anchor_link, link=link, title=title, image_filename=image_filename)
+            elif keyword == '!quote':
+                author_intro = ''
+                if len(values) > 1:
+                    author_intro = """
+                    <span style="float:right">─ {author_intro}</span>
+                    """.format(author_intro=values[1])
+                html_str = """
+                <blockquote>
+                    <p>
+                        {quote}
+                        <br>
+                        {author_intro}
+                        <br>
+                    </p>
+                </blockquote>
+                """.format(quote=values[0], author_intro=author_intro)
+            elif keyword == '!mp4':
+                mp4_file, description, image_file = [''] * 3
+                if len(values) == 1:
+                    mp4_file = values[0]
+                elif len(values) == 2:
+                    mp4_file, image_file = values
+                elif len(values) == 3:
+                    mp4_file, image_file, description = values
+
+                if description:
+                    description = """
+                    <center>
+                        {description}
+                        <br/>
+                        <br/>
+                    </center>
+                    """.format(description=description)
+                else:
+                    description = '<br>'
+
+                html_str = """
+                <video loop muted autoplay playsinline poster="{{filename}}{image_file}">
+                  <source src="{{filename}}{mp4_file}" type="video/mp4">
+                    您的瀏覽器不支援影片標籤，請留言通知我：S
+                </video>
+                {description}
+                """.format(filename='filename', mp4_file=mp4_file, image_file=image_file, description=description)
+            elif keyword == '!image':
+                if len(values) == 1:
+                    html_str = """
+                    <img src="{{filename}}images/{image_file}"/>
+                    <br>
+                    """.format(filename='filename', image_file=values[0])
+                else:
+                    description = values[1]
+                    source_str = ''
+                    if len(values) == 3:
+                        source_link = values[2]
+                        source_str = """
+                        （<a href="{source_link}" target="_blank">圖片來源</a>）
+                        """.format(source_link=source_link)
+                    elif len(values) == 4:
+                        source_link, source_name = values[2:]
+                        source_str = """
+                        （圖片來源：<a href="{source_link}" target="_blank">{source_name}</a>）
+                        """.format(source_link=source_link, source_name=source_name)
+
+                    html_str = """
+                    <center>
+                        <img src="{{filename}}/images/{image_file}">
+                    </center>
+                    <center>
+                        {description}{source_str}
+                        <br>
+                        <br>
+                    </center>
+                    """.format(filename='filename', image_file=values[0],
+                               description=description, source_str=source_str)
+
+            # delete existing template setting
+            p = i.find('p')
+            ul = i.find('ul')
+            p.extract()
+            ul.extract()
+
+            # insert generated html string
+            i.append(BeautifulSoup(html_str, 'html.parser'))
 
         content = soup.decode(formatter="minimal")
 
