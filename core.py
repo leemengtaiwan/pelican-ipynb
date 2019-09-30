@@ -161,19 +161,45 @@ def get_html_from_filepath(filepath, start=0, end=None, preprocessors=[], templa
             t['class'] = t.get('class', []) + ['table', 'table-striped', 'table-responsive']
 
         # generate html for templated markdown cells
+        mp4_options = 'loop autoplay muted playsinline'  # mp4 video default options
         for i in soup.findAll('div', {'class': 'text_cell_render'}):
+            class_str = ""
+            style_str = ""
+
             texts = i.findChildren()
             template_settings = {
                 '!article': ['article_title', 'article_link', 'image_filename'],
                 '!quote': ['quote_text', 'author_into'],
                 '!mp4': ['mp4_file', 'image_file', 'description'],
                 '!image': ['image_file', 'description', 'source_link', 'source_name'],
+                '!youtube': ['video_id', 'description', 'start', 'end'],
             }
             # get settings for template keywords
             values = []
             if texts and texts[0].text in template_settings:
                 keyword = texts[0].text
-                values = [e.text for e in i.findAll('li')]
+                for e in i.findAll('li'):
+                    text = e.text
+                    if text == 'dark':
+                        # 參照 pelican-jupyter-notebook/themes/Hola10/static/css/darkmode.css
+                        style_str += "mix-blend-mode: initial;"
+                    elif text.startswith("style:"):
+                        text = text.replace("style:", "")
+                        style_str += text
+
+                    # special keyword for mp4 video options
+                    elif keyword == '!mp4' and 'options:' in text:
+                        if 'no-loop' in text.replace('_', '-'):
+                            mp4_options = mp4_options.replace("loop ", "")
+                        if 'no-autoplay' in text.replace('_', '-'):
+                            mp4_options = mp4_options.replace("autoplay ", "")
+                        if 'controls' in text:
+                            mp4_options += " controls"
+                    else:
+                        values.append(text)
+
+                style_str = f'style="{style_str}"' if style_str else ''
+                class_str = f'class="{class_str}"' if class_str else ''
 
             if not values:
                 continue
@@ -183,21 +209,22 @@ def get_html_from_filepath(filepath, start=0, end=None, preprocessors=[], templa
                 title, link, image_filename = values
                 anchor_link = title.replace(' ', ' ').replace('　', ' ').replace(' ', '-')
                 html_str = """
-                <h3 id="{anchor_link}">
-                    <a href="{link}">{title}</a><a class="anchor-link" href="#{anchor_link}">¶</a>
-                </h3>
+                <h2 id="{anchor_link}">
+                    <a href="{link}" target="_blank">{title}</a><a class="anchor-link" href="#{anchor_link}">¶</a>
+                </h2>
                 <center>
                     <a href="{link}" target="_blank">
-                        <img src="/images/digests/{image_filename}">
+                        <img src="{{filename}}images/digests/{image_filename}" {style_str}>
                     </a>
                     <br>
                 </center>
-                """.format(anchor_link=anchor_link, link=link, title=title, image_filename=image_filename)
+                """.format(filename='static', anchor_link=anchor_link,
+                           link=link, title=title, image_filename=image_filename, style_str=style_str)
             elif keyword == '!quote':
                 author_intro = ''
                 if len(values) > 1:
                     author_intro = """
-                    <span style="float:right">─ {author_intro}</span>
+                    <span style="float:right;margin-right: 1.5rem">─ {author_intro}</span>
                     """.format(author_intro=values[1])
                 html_str = """
                 <blockquote>
@@ -210,38 +237,46 @@ def get_html_from_filepath(filepath, start=0, end=None, preprocessors=[], templa
                 </blockquote>
                 """.format(quote=values[0], author_intro=author_intro)
             elif keyword == '!mp4':
-                mp4_file, description, image_file = [''] * 3
+                mp4_file, description, image_file, source_str, source_link = [''] * 5
                 if len(values) == 1:
                     mp4_file = values[0]
                 elif len(values) == 2:
                     mp4_file, image_file = values
                 elif len(values) == 3:
                     mp4_file, image_file, description = values
+                elif len(values) == 4:
+                    mp4_file, image_file, description, source_link = values
 
                 if description:
+                    if source_link:
+                        source_str = """
+                        （<a href="{source_link}" target="_blank">圖片來源</a>）
+                        """.format(source_link=source_link)
+
                     description = """
                     <center>
-                        {description}
+                        {description}{source_str}
                         <br/>
                         <br/>
                     </center>
-                    """.format(description=description)
+                    """.format(description=description, source_str=source_str)
                 else:
                     description = '<br>'
 
                 html_str = """
-                <video loop muted autoplay playsinline poster="{{filename}}{image_file}">
+                <video {mp4_options} poster="{{filename}}{image_file}" {class_str} {style_str}> 
                   <source src="{{filename}}{mp4_file}" type="video/mp4">
                     您的瀏覽器不支援影片標籤，請留言通知我：S
                 </video>
                 {description}
-                """.format(filename='filename', mp4_file=mp4_file, image_file=image_file, description=description)
+                """.format(mp4_options=mp4_options, filename='static', mp4_file=mp4_file, image_file=image_file,
+                           class_str=class_str, style_str=style_str, description=description)
             elif keyword == '!image':
                 if len(values) == 1:
                     html_str = """
-                    <img src="{{filename}}images/{image_file}"/>
+                    <img {class_str} {style_str} src="{{filename}}images/{image_file}"/>
                     <br>
-                    """.format(filename='filename', image_file=values[0])
+                    """.format(class_str=class_str, style_str=style_str, filename='static', image_file=values[0])
                 else:
                     description = values[1]
                     source_str = ''
@@ -258,15 +293,50 @@ def get_html_from_filepath(filepath, start=0, end=None, preprocessors=[], templa
 
                     html_str = """
                     <center>
-                        <img src="{{filename}}/images/{image_file}">
+                        <img {class_str} {style_str} src="{{filename}}/images/{image_file}">
                     </center>
                     <center>
                         {description}{source_str}
                         <br>
                         <br>
                     </center>
-                    """.format(filename='filename', image_file=values[0],
+                    """.format(class_str=class_str, style_str=style_str, filename='static', image_file=values[0],
                                description=description, source_str=source_str)
+            elif keyword == '!youtube':
+                period_str, description = '', ''
+                if len(values) == 1:
+                    video_id = values[0]
+                elif len(values) == 2:
+                    video_id, description = values
+                elif len(values) == 3:
+                    video_id, description, start = values
+                    period_str = f'?start={start}'
+                elif len(values) == 4:
+                    video_id, description, start, end = values
+                    period_str = f'?start={start}&end={end}'
+
+                if description:
+                    description = """
+                    <center>
+                        {description}
+                        <br/>
+                        <br/>
+                    </center>
+                    """.format(description=description,)
+                else:
+                    description = '<br>'
+
+                html_str = """
+                <div class="resp-container">
+                    <iframe class="resp-iframe" 
+                            src="https://www.youtube-nocookie.com/embed/{video_id}{period_str}" 
+                            frameborder="0" 
+                            allow="accelerometer; 
+                            autoplay; encrypted-media; gyroscope; picture-in-picture" allowfullscreen>
+                    </iframe>
+                </div>
+                {description}
+                """.format(video_id=video_id, period_str=period_str, description=description)
 
             # delete existing template setting
             p = i.find('p')
