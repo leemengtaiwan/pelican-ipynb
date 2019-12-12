@@ -241,11 +241,21 @@ def get_html_from_filepath(filepath, start=0, end=None, preprocessors=[], templa
                 if len(values) == 1:
                     mp4_file = values[0]
                 elif len(values) == 2:
-                    mp4_file, image_file = values
+                    for v in values:
+                        v = v.lower()
+                        if '.mp4' in v:
+                            mp4_file = v
+                        elif '.jpg' in v or '.png' in v or '.svg' in v or '.jpeg' in v:
+                            image_file = v
+                        else:
+                            description = v
                 elif len(values) == 3:
                     mp4_file, image_file, description = values
+                    assert '.mp4' in mp4_file, '沒有對應的 mp4 檔案！'
                 elif len(values) == 4:
                     mp4_file, image_file, description, source_link = values
+                    assert '.mp4' in mp4_file, '沒有對應的 mp4 檔案！'
+                    assert 'http' in source_link, '沒有對應的網址！'
 
                 if description:
                     if source_link:
@@ -380,8 +390,8 @@ def parse_css(content, info, fix_css=True, ignore_css=False):
         return style_tag(style)
 
     if ignore_css:
-        # content = content + LATEX_CUSTOM_SCRIPT
-        content = content
+        content = content + LATEX_CUSTOM_SCRIPT
+        # content = content
     else:
         if fix_css:
             jupyter_css = '\n'.join(filter_css(style) for style in info['inlining']['css'])
