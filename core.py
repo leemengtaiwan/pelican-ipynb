@@ -214,11 +214,11 @@ def get_html_from_filepath(filepath, start=0, end=None, preprocessors=[], templa
                 </h2>
                 <center>
                     <a href="{link}" target="_blank">
-                        <img src="{{filename}}images/digests/{image_filename}" {style_str}>
+                        <img src="{{static}}images/digests/{image_filename}" {style_str}>
                     </a>
                     <br>
                 </center>
-                """.format(filename='static', anchor_link=anchor_link,
+                """.format(static='static', anchor_link=anchor_link,
                            link=link, title=title, image_filename=image_filename, style_str=style_str)
             elif keyword == '!quote':
                 author_intro = ''
@@ -274,19 +274,19 @@ def get_html_from_filepath(filepath, start=0, end=None, preprocessors=[], templa
                     description = '<br>'
 
                 html_str = """
-                <video {mp4_options} poster="{{filename}}{image_file}" {class_str} {style_str}> 
-                  <source src="{{filename}}{mp4_file}" type="video/mp4">
+                <video {mp4_options} poster="{{static}}{image_file}" {class_str} {style_str}> 
+                  <source src="{{static}}{mp4_file}" type="video/mp4">
                     您的瀏覽器不支援影片標籤，請留言通知我：S
                 </video>
                 {description}
-                """.format(mp4_options=mp4_options, filename='static', mp4_file=mp4_file, image_file=image_file,
+                """.format(mp4_options=mp4_options, static='static', mp4_file=mp4_file, image_file=image_file,
                            class_str=class_str, style_str=style_str, description=description)
             elif keyword == '!image':
                 if len(values) == 1:
                     html_str = """
-                    <img {class_str} {style_str} src="{{filename}}images/{image_file}"/>
+                    <img {class_str} {style_str} src="{{static}}images/{image_file}"/>
                     <br>
-                    """.format(class_str=class_str, style_str=style_str, filename='static', image_file=values[0])
+                    """.format(class_str=class_str, style_str=style_str, static='static', image_file=values[0])
                 else:
                     description = values[1]
                     source_str = ''
@@ -303,14 +303,14 @@ def get_html_from_filepath(filepath, start=0, end=None, preprocessors=[], templa
 
                     html_str = """
                     <center>
-                        <img {class_str} {style_str} src="{{filename}}/images/{image_file}">
+                        <img {class_str} {style_str} src="{{static}}/images/{image_file}">
                     </center>
                     <center>
                         {description}{source_str}
                         <br>
                         <br>
                     </center>
-                    """.format(class_str=class_str, style_str=style_str, filename='static', image_file=values[0],
+                    """.format(class_str=class_str, style_str=style_str, static='static', image_file=values[0],
                                description=description, source_str=source_str)
             elif keyword == '!youtube':
                 period_str, description = '', ''
